@@ -13,6 +13,7 @@ from tracking_utils.log import logger
 import datasets.dataset.jde as datasets
 from track import eval_seq
 
+from track import eval_seq_realtime
 
 logger.setLevel(logging.INFO)
 
@@ -22,17 +23,19 @@ def demo(opt):
     mkdir_if_missing(result_root)
 
     logger.info('Starting tracking...')
-    dataloader = datasets.LoadVideo(opt.input_video, opt.img_size)
-    result_filename = os.path.join(result_root, 'results.txt')
-    frame_rate = dataloader.frame_rate
+    # dataloader = datasets.LoadVideo(opt.input_video, opt.img_size)
+    # result_filename = os.path.join(result_root, 'results.txt')
+    # frame_rate = dataloader.frame_rate
 
-    frame_dir = None if opt.output_format == 'text' else osp.join(result_root, 'frame')
-    eval_seq(opt, dataloader, 'mot', result_filename, save_dir=frame_dir, show_image=False, frame_rate=frame_rate)
+    eval_seq_realtime(opt)
 
-    if opt.output_format == 'video':
-        output_video_path = osp.join(result_root, 'result.mp4')
-        cmd_str = 'ffmpeg -f image2 -i {}/%05d.jpg -b 5000k -c:v mpeg4 {}'.format(osp.join(result_root, 'frame'), output_video_path)
-        os.system(cmd_str)
+    # frame_dir = None if opt.output_format == 'text' else osp.join(result_root, 'frame')
+    # eval_seq(opt, dataloader, 'mot', result_filename, save_dir=frame_dir, show_image=True, frame_rate=frame_rate)
+    #
+    # if opt.output_format == 'video':
+    #     output_video_path = osp.join(result_root, 'result.mp4')
+    #     cmd_str = 'ffmpeg -f image2 -i {}/%05d.jpg -b 5000k -c:v mpeg4 {}'.format(osp.join(result_root, 'frame'), output_video_path)
+    #     os.system(cmd_str)
 
 
 if __name__ == '__main__':

@@ -85,6 +85,74 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     return frame_id, timer.average_time, timer.calls
 
 
+def letterbox(img, height=608, width=1088,
+              color=(127.5, 127.5, 127.5)):  # resize a rectangular image to a padded rectangular
+    shape = img.shape[:2]  # shape = [height, width]
+    ratio = min(float(height) / shape[0], float(width) / shape[1])
+    new_shape = (round(shape[1] * ratio), round(shape[0] * ratio))  # new_shape = [width, height]
+    dw = (width - new_shape[0]) / 2  # width padding
+    dh = (height - new_shape[1]) / 2  # height padding
+    top, bottom = round(dh - 0.1), round(dh + 0.1)
+    left, right = round(dw - 0.1), round(dw + 0.1)
+    img = cv2.resize(img, new_shape, interpolation=cv2.INTER_AREA)  # resized, no border
+    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # padded rectangular
+    return img, ratio, dw, dh
+
+
+def eval_seq_realtime(opt, save_dir=None, show_image=True, frame_rate=30):
+    tracker = JDETracker(opt, frame_rate=frame_rate)
+    timer = Timer()
+    frame_id = 0
+
+    cv2.namedWindow('online_im', cv2.WINDOW_FREERATIO)
+    cv2.setWindowProperty('online_im', cv2.WND_PROP_AUTOSIZE, cv2.WND_PROP_AUTOSIZE)
+    cap = cv2.VideoCapture(0)
+    ret, im = cap.read()
+
+    height = im.shape[0]; width = im.shape[1]
+
+    while True:
+        ret, img0 = cap.read()
+
+        # Padded resize
+        img, _, _, _ = letterbox(img0, height=height, width=width)
+
+        # Normalize RGB
+        img = img[:, :, ::-1].transpose(2, 0, 1)
+        img = np.ascontiguousarray(img, dtype=np.float32)
+        img /= 255.0
+
+        if frame_id % 20 == 0:
+            logger.info('Processing frame {} ({:.2f} fps)'.format(frame_id, 1. / max(1e-5, timer.average_time)))
+
+        # run tracking
+        timer.tic()
+        blob = torch.from_numpy(img).cuda().unsqueeze(0)
+        online_targets = tracker.update(blob, img0)
+        online_tlwhs = []
+        online_ids = []
+        for t in online_targets:
+            tlwh = t.tlwh
+            tid = t.track_id
+            vertical = tlwh[2] / tlwh[3] > 1.6
+            if tlwh[2] * tlwh[3] > opt.min_box_area and not vertical:
+                online_tlwhs.append(tlwh)
+                online_ids.append(tid)
+        timer.toc()
+        online_im = vis.plot_tracking(img0, online_tlwhs, online_ids, frame_id=frame_id,
+                                      fps=1. / timer.average_time)
+        text_scale = max(1, online_im.shape[1] / 1600.)
+        text_thickness = 1 if text_scale > 1.1 else 1
+        line_thickness = max(1, int(online_im.shape[1] / 500.))
+        cv2.putText(online_im, 'Press ESC to STOP',
+                    (300, int(15 * text_scale)), cv2.FONT_HERSHEY_PLAIN, text_scale, (0, 0, 255), thickness=2)
+        cv2.imshow('online_im', online_im)
+        key = cv2.waitKey(1)
+        if key == 27:
+            break
+        frame_id += 1
+    cv2.destroyAllWindows()
+
 def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), exp_name='demo',
          save_images=False, save_videos=False, show_image=True):
     logger.setLevel(logging.INFO)
